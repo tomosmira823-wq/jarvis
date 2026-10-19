@@ -1,9 +1,8 @@
 name: Build & release
 
 # Any push to main that changes package.json (i.e. a version bump) builds the
-# Windows installer and publishes it as GitHub Release v<version>. Installed
-# copies of Jarvis pick it up automatically. A version that's already released
-# is skipped by electron-builder, so re-runs are harmless.
+# Windows installer and publishes it as GitHub Release v<version>, together with
+# latest.yml + .blockmap, which is what installed copies check for updates.
 on:
   push:
     branches: [main]
@@ -24,7 +23,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - name: Build and publish
-        run: npx electron-builder --win --x64 --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build installer
+        run: npx electron-builder --win --x64 --publish never
+      - name: Read version
+        id: v
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: Jarvis v${{ steps.v.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          overwrite_files: true
+          files: |
+            dist/Jarvis-Setup-*.exe
+            dist/Jarvis-Setup-*.exe.blockmap
+            dist/latest.yml
