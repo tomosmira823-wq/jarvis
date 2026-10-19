@@ -1,10 +1,12 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, safeStorage, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, safeStorage, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
 const { autoUpdater } = require('electron-updater');
 const { Agent } = require('./agent');
 const { listenOnce } = require('./voice');
+const { McpManager } = require('./mcp');
+const attachments = require('./attachments');
 
 log.initialize();
 autoUpdater.logger = log;
@@ -36,6 +38,7 @@ let settings = loadSettings();
 let win = null;
 let tray = null;
 let agent = null;
+let mcp = null;
 let quitting = false;
 let updateReady = false;
 
@@ -70,6 +73,16 @@ function setApiKey(key) {
   }
   const buf = safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(key) : Buffer.from(key, 'utf8');
   settings.apiKeyEnc = buf.toString('base64');
+}
+
+function encryptText(t) {
+  return safeStorage.isEncryptionAvailable() ? 'enc:' + safeStorage.encryptString(t).toString('base64') : 'raw:' + t;
+}
+
+function decryptText(t) {
+  if (t.startsWith('enc:')) return safeStorage.decryptString(Buffer.from(t.slice(4), 'base64'));
+  if (t.startsWith('raw:')) return t.slice(4);
+  return t;
 }
 
 function loadMemory() {
@@ -214,6 +227,7 @@ function buildAgent() {
     loadMemory,
     saveMemory,
     requestApproval,
+    mcp,
     emit: (evt) => send('agent-event', evt),
     hideWindow: () => win && win.isVisible() && win.minimize(),
     restoreWindow: () => win && win.restore(),
@@ -303,7 +317,40 @@ ipcMain.handle('test-key', async (_e, key) => {
   }
 });
 
-ipcMain.handle('send-message', (_e, text) => agent.run(text));
+ipcMain.handle('send-message', (_e, payload) =>
+  typeof payload === 'string' ? agent.run(payload, []) : agent.run(payload.text, payload.attachments || [])
+);
+
+// ---------- attachments ----------
+ipcMain.handle('pick-files', async () => {
+  const r = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'] });
+  return r.canceled ? [] : r.filePaths;
+});
+ipcMain.handle('file-info', (_e, paths) => paths.map((p) => attachments.describe(p)));
+ipcMain.handle('save-pasted', (_e, { name, data }) => attachments.savePasted(name, Buffer.from(data)));
+
+// ---------- MCP connectors ----------
+ipcMain.handle('mcp-status', () => mcp.status());
+ipcMain.handle('mcp-add', async (_e, def) => {
+  try {
+    const s = mcp.add(def);
+    mcp.connect(s.id, { interactive: true }).catch(() => {});
+    return { ok: true, id: s.id };
+  } catch (err) {
+    return { ok: false, message: err.message };
+  }
+});
+ipcMain.handle('mcp-connect', async (_e, id) => {
+  try {
+    await mcp.connect(id, { interactive: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: err.message };
+  }
+});
+ipcMain.handle('mcp-toggle', (_e, { id, enabled }) => mcp.setEnabled(id, enabled));
+ipcMain.handle('mcp-remove', (_e, id) => mcp.remove(id));
+ipcMain.handle('mcp-signout', (_e, id) => mcp.signOut(id));
 ipcMain.handle('stop', () => agent.stop());
 ipcMain.handle('new-chat', () => agent.reset());
 ipcMain.handle('approval', (_e, { id, ok }) => {
@@ -337,7 +384,16 @@ app.whenReady().then(() => {
   createTray();
   registerHotkey();
   applyStartup();
+  mcp = new McpManager({
+    userDir,
+    encrypt: encryptText,
+    decrypt: decryptText,
+    openExternal: (u) => shell.openExternal(u),
+    onChange: (st) => send('mcp-status', st),
+    log,
+  });
   buildAgent();
+  mcp.connectAll();
   setTimeout(() => checkForUpdates(false), 5000);
   setInterval(() => checkForUpdates(false), 4 * 60 * 60 * 1000);
 });

@@ -24,8 +24,21 @@ On first launch, Settings opens. Paste your Anthropic API key (from console.anth
 | `open` | URLs, files, folders, apps |
 | `screenshot`, `mouse`, `keyboard` | See and drive the GUI |
 | `clipboard` | Read/write the clipboard |
-| `fetch_url`, `web_search` | The internet |
+| `fetch_url`, `web_search`, `download_file` | The internet |
 | `remember` / `forget` | Long-term memory, editable in Settings |
+
+## Attaching files
+
+Drag files onto the window, paste them (Ctrl+V, including screenshots), or use the paperclip. Images and PDFs are sent for Claude to see directly, text and code files are inlined, and anything else (DWG, XLSX, ZIP…) is passed by its path so Jarvis can open it with its tools.
+
+## Connectors (MCP)
+
+Config → Connectors adds apps through MCP, the same standard Claude's own connectors use:
+
+- **+ Higgsfield** adds `https://mcp.higgsfield.ai/mcp` and opens the Higgsfield sign-in in your browser.
+- **+ Custom server** takes any remote MCP URL (sign-in handled automatically via OAuth) or a local command (e.g. `npx -y @modelcontextprotocol/server-filesystem C:\Work`).
+
+Connector tools are loaded on demand with Claude's tool search, so even servers with hundreds of tools don't add cost to every message. Sign-in tokens are stored encrypted in `%APPDATA%\Jarvis\mcp-auth.bin`.
 
 ## Releasing an update
 

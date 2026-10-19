@@ -363,3 +363,48 @@ select option { background: #04121a; }
 .feed li > div { min-width: 0; }
 @media (max-width: 1040px) { .tb-center { display: none; } }
 @media (max-width: 700px) { .hbtn span { display: none; } .tag { display: none; } }
+
+/* ---------- attachments ---------- */
+.tray { max-width: 860px; margin: 0 auto 8px; display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: flex; align-items: center; gap: 9px; max-width: 260px; padding: 5px 8px 5px 5px; border: 1px solid var(--c-lo); background: rgba(4, 18, 27, 0.85); font: 400 12px/1.2 var(--mono); color: var(--text); animation: feedIn 0.25s ease both; }
+.chip .th { width: 34px; height: 34px; flex: none; display: grid; place-items: center; background: var(--c-faint); border: 1px solid var(--c-faint); overflow: hidden; font: 700 9px/1 var(--hud); letter-spacing: 0.08em; color: var(--c); }
+.chip .th img { width: 100%; height: 100%; object-fit: cover; }
+.chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip .sz { color: var(--faint); font-size: 10.5px; }
+.chip .x { border: 0; background: none; color: var(--faint); font-size: 14px; padding: 0 2px; margin-left: auto; }
+.chip .x:hover { color: var(--red); }
+.chip.missing { border-color: rgba(255, 79, 94, 0.45); }
+.msg.user .files { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-bottom: 6px; }
+.msg.user .files .chip { background: rgba(255, 181, 71, 0.05); border-color: rgba(255, 181, 71, 0.3); }
+.msg.user .files .chip .th { background: rgba(255, 181, 71, 0.08); color: var(--amber); }
+.msg.user .files .chip.big { padding: 0; }
+.msg.user .files .chip.big img { display: block; max-width: 240px; max-height: 170px; }
+
+.dropzone { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(1, 8, 13, 0.82); backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+.dropzone::before { content: ""; position: absolute; inset: 22px; border: 2px dashed var(--c-mid); box-shadow: inset 0 0 60px var(--c-faint); }
+body.dragging .dropzone { opacity: 1; }
+.dz-inner { text-align: center; }
+.dz-ring { position: relative; width: 110px; height: 110px; margin: 0 auto 22px; }
+.dz-ring i { position: absolute; border-radius: 50%; border: 2px solid transparent; }
+.dz-ring i:nth-child(1) { inset: 0; border-top-color: var(--c); border-right-color: var(--c); animation: spin 1.2s linear infinite; box-shadow: 0 0 20px var(--c-lo); }
+.dz-ring i:nth-child(2) { inset: 30px; background: radial-gradient(circle, #fff, var(--c) 50%, transparent 72%); box-shadow: 0 0 30px var(--c); animation: pulse 0.9s ease-in-out infinite; }
+.dz-title { font: 700 20px/1 var(--hud); letter-spacing: 0.4em; text-transform: uppercase; color: var(--c-hi); text-shadow: 0 0 14px var(--c); }
+.dz-sub { margin-top: 12px; color: var(--dim); font-size: 15px; }
+
+/* ---------- connectors ---------- */
+.servers { list-style: none; margin: 10px 0 0; padding: 0; }
+.servers li { padding: 10px 0; border-top: 1px dashed var(--c-faint); }
+.servers .none { color: var(--faint); font-size: 14px; }
+.srv-top { display: flex; align-items: center; gap: 10px; }
+.srv-name { font: 600 15px/1.2 var(--ui); color: var(--text); }
+.srv-url { font: 400 11.5px/1.3 var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; }
+.pill { margin-left: auto; flex: none; font: 700 9.5px/1 var(--hud); letter-spacing: 0.14em; padding: 4px 7px; border: 1px solid var(--c-lo); color: var(--c); text-transform: uppercase; }
+.pill.st-connected { color: var(--green); border-color: rgba(77, 255, 176, 0.4); }
+.pill.st-needs-auth { color: var(--amber); border-color: rgba(255, 181, 71, 0.45); }
+.pill.st-error { color: var(--red); border-color: rgba(255, 79, 94, 0.45); }
+.pill.st-disabled, .pill.st-disconnected { color: var(--faint); border-color: var(--c-faint); }
+.pill.st-connecting { animation: pulse 0.9s infinite; }
+.srv-err { font: 400 11.5px/1.35 var(--mono); color: var(--red); margin-top: 5px; word-break: break-word; }
+.srv-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.srv-actions .hbtn { height: 26px; padding: 0 10px; font-size: 9.5px; }
+.addserver { display: grid; gap: 8px; margin-top: 12px; padding: 12px; border: 1px solid var(--c-faint); background: rgba(0, 8, 13, 0.5); }

@@ -174,6 +174,37 @@ async function fetchUrl(url, signal) {
   return clip(`HTTP ${res.status} ${type}\n\n${body.trim()}`, 30000);
 }
 
+const MIME_EXT = {
+  'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif',
+  'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov', 'audio/mpeg': '.mp3',
+  'audio/wav': '.wav', 'application/pdf': '.pdf', 'application/zip': '.zip', 'model/gltf-binary': '.glb',
+};
+
+async function downloadFile(url, target, signal) {
+  const res = await fetch(url, { signal, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 Jarvis/1.2' } });
+  if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`);
+  const type = (res.headers.get('content-type') || '').split(';')[0].trim();
+  let name = '';
+  const cd = res.headers.get('content-disposition') || '';
+  const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+  if (m) name = decodeURIComponent(m[1]);
+  if (!name) name = decodeURIComponent(new URL(res.url || url).pathname.split('/').pop() || '');
+  name = name.replace(/[<>:"/\\|?*\x00-\x1f]+/g, '_').slice(0, 120) || `jarvis-${Date.now()}`;
+  if (!path.extname(name) && MIME_EXT[type]) name += MIME_EXT[type];
+  let file;
+  const t = target ? expandPath(target) : path.join(os.homedir(), 'Downloads', 'Jarvis');
+  if (target && path.extname(t) && !(fs.existsSync(t) && fs.statSync(t).isDirectory())) file = t;
+  else file = path.join(t, name);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  if (fs.existsSync(file) && !target) {
+    const ext = path.extname(file);
+    file = file.slice(0, -ext.length || undefined) + `-${Date.now()}` + ext;
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  fs.writeFileSync(file, buf);
+  return `Saved ${buf.length.toLocaleString()} bytes (${type || 'unknown type'}) to ${file}`;
+}
+
 // ---------- tool definitions ----------
 const DEFINITIONS = [
   {
@@ -263,6 +294,19 @@ const DEFINITIONS = [
     input_schema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
   },
   {
+    name: 'download_file',
+    description:
+      'Download a file (image, video, document, installer…) from a URL to the PC. If path is omitted it goes to Downloads\\Jarvis with a sensible name. Returns the saved path.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+        path: { type: 'string', description: 'Optional full path or folder to save to.' },
+      },
+      required: ['url'],
+    },
+  },
+  {
     name: 'remember',
     description:
       'Save a long-term fact or preference about the user so you know it in every future chat (e.g. where their projects live, how they like things done).',
@@ -276,7 +320,7 @@ const DEFINITIONS = [
 ];
 
 // Tools that change things on the PC (used for "ask before actions" mode).
-const ACTION_TOOLS = new Set(['run_powershell', 'write_file', 'open', 'mouse', 'keyboard', 'clipboard']);
+const ACTION_TOOLS = new Set(['run_powershell', 'write_file', 'open', 'mouse', 'keyboard', 'clipboard', 'download_file']);
 // Tools that need the screen clear of Jarvis's own window.
 const SCREEN_TOOLS = new Set(['screenshot', 'mouse', 'keyboard']);
 
@@ -385,6 +429,8 @@ async function execute(name, input, ctx) {
     }
     case 'fetch_url':
       return fetchUrl(input.url, signal);
+    case 'download_file':
+      return downloadFile(input.url, input.path, signal);
     case 'remember': {
       const mem = ctx.loadMemory();
       mem.push({ fact: input.fact, at: new Date().toISOString() });

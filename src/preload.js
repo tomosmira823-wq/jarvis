@@ -1,10 +1,21 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('jarvis', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (s) => ipcRenderer.invoke('save-settings', s),
   testKey: (k) => ipcRenderer.invoke('test-key', k),
-  send: (text) => ipcRenderer.invoke('send-message', text),
+  send: (text, attachments) => ipcRenderer.invoke('send-message', { text, attachments }),
+  pickFiles: () => ipcRenderer.invoke('pick-files'),
+  fileInfo: (paths) => ipcRenderer.invoke('file-info', paths),
+  savePasted: (name, data) => ipcRenderer.invoke('save-pasted', { name, data }),
+  pathForFile: (file) => webUtils.getPathForFile(file),
+  mcpStatus: () => ipcRenderer.invoke('mcp-status'),
+  mcpAdd: (def) => ipcRenderer.invoke('mcp-add', def),
+  mcpConnect: (id) => ipcRenderer.invoke('mcp-connect', id),
+  mcpToggle: (id, enabled) => ipcRenderer.invoke('mcp-toggle', { id, enabled }),
+  mcpRemove: (id) => ipcRenderer.invoke('mcp-remove', id),
+  mcpSignOut: (id) => ipcRenderer.invoke('mcp-signout', id),
+  onMcp: (cb) => ipcRenderer.on('mcp-status', (_e, d) => cb(d)),
   stop: () => ipcRenderer.invoke('stop'),
   newChat: () => ipcRenderer.invoke('new-chat'),
   approve: (id, ok) => ipcRenderer.invoke('approval', { id, ok }),

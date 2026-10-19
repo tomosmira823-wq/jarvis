@@ -6,6 +6,8 @@ let current = null;
 let tools = {};
 let busy = false;
 let sessionTokens = 0;
+let pending = []; // attachments waiting to be sent
+let mcpServers = [];
 
 // ---------- helpers ----------
 function esc(s) {
@@ -174,7 +176,7 @@ function feedAdd(evt) {
   const feed = $('feed');
   feed.querySelector('.none')?.remove();
   const li = document.createElement('li');
-  li.innerHTML = `<span class="fdot"></span><div><div><span class="fn">${esc(evt.name)}</span> <span class="ft">${hhmmss()}</span></div><div class="fs">${esc(summarise(evt.name, evt.input))}</div></div>`;
+  li.innerHTML = `<span class="fdot"></span><div><div><span class="fn">${esc(prettyTool(evt.name))}</span> <span class="ft">${hhmmss()}</span></div><div class="fs">${esc(summarise(evt.name, evt.input))}</div></div>`;
   feed.prepend(li);
   feedItems[evt.id] = li;
   while (feed.children.length > 40) feed.lastChild.remove();
@@ -200,11 +202,14 @@ function startChatLayout() {
   $('empty').classList.add('hidden');
   document.body.classList.add('chatting');
 }
-function addUser(text) {
+function addUser(text, files = []) {
   startChatLayout();
   const el = document.createElement('div');
   el.className = 'msg user';
-  el.innerHTML = `<div class="who"><time>${hhmmss()}</time>${esc((settings.callMe || 'YOU').toUpperCase())}</div><div class="bubble">${esc(text)}</div>`;
+  const fileHtml = files.length
+    ? `<div class="files">${files.map((f) => (f.thumb && files.length <= 3 ? `<div class="chip big" title="${esc(f.path)}"><img src="${f.thumb}"></div>` : chipHtml(f, false))).join('')}</div>`
+    : '';
+  el.innerHTML = `<div class="who"><time>${hhmmss()}</time>${esc((settings.callMe || 'YOU').toUpperCase())}</div>${fileHtml}${text ? `<div class="bubble">${esc(text)}</div>` : ''}`;
   log.appendChild(el);
   scroll();
 }
@@ -241,7 +246,13 @@ function summarise(name, input) {
   if (name === 'mouse') return `${input.action}${input.x != null ? ` @ ${input.x},${input.y}` : ''}`;
   if (name === 'keyboard') return input.keys || JSON.stringify(input.text);
   if (name === 'screenshot') return 'capturing primary display';
+  if (name === 'tool_search') return `searching connectors: ${input.query || input.pattern || ''}`;
+  if (name === 'download_file') return input.url;
   return Object.values(input).map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).join(' ').split('\n')[0];
+}
+function prettyTool(name) {
+  const m = /^mcp_([a-z0-9_]+?)__(.+)$/.exec(name);
+  return m ? `${m[1]} › ${m[2]}` : name;
 }
 function addTool(evt) {
   closeSeg();
@@ -249,11 +260,11 @@ function addTool(evt) {
   const d = document.createElement('details');
   d.className = 'tool';
   const full = evt.name === 'run_powershell' ? evt.input.script : JSON.stringify(evt.input, null, 2);
-  d.innerHTML = `<summary><span class="tag2">EXEC</span><span class="tname">${esc(evt.name)}</span><span class="tsum">${esc(summarise(evt.name, evt.input))}</span></summary><pre class="in">${esc(full)}</pre><pre class="out">…</pre>`;
+  d.innerHTML = `<summary><span class="tag2">EXEC</span><span class="tname">${esc(prettyTool(evt.name))}</span><span class="tsum">${esc(summarise(evt.name, evt.input))}</span></summary><pre class="in">${esc(full)}</pre><pre class="out">…</pre>`;
   c.stream.appendChild(d);
   tools[evt.id] = d;
   feedAdd(evt);
-  $('stateSub').textContent = `Executing ${evt.name.replace(/_/g, ' ')}`;
+  $('stateSub').textContent = `Executing ${prettyTool(evt.name).replace(/_/g, ' ')}`;
   scroll();
 }
 function toolResult(evt) {
@@ -356,7 +367,7 @@ window.jarvis.onEvent((evt) => {
 
 async function submit(text) {
   text = (text ?? input.value).trim();
-  if (!text || busy) return;
+  if ((!text && !pending.length) || busy) return;
   if (!settings.hasApiKey) {
     openSettings();
     $('keyState').textContent = 'Paste your API key first, then Save.';
@@ -366,11 +377,108 @@ async function submit(text) {
   stopSpeaking();
   input.value = '';
   autosize();
-  addUser(text);
+  const files = pending.filter((f) => f.kind !== 'missing');
+  pending = [];
+  renderTray();
+  addUser(text, files);
   current = null;
   setBusy(true);
-  window.jarvis.send(text);
+  window.jarvis.send(text, files.map((f) => f.path));
 }
+
+// ---------- attachments ----------
+const KIND_LABEL = { image: 'IMG', pdf: 'PDF', text: 'TXT', file: 'FILE', folder: 'DIR', missing: '!' };
+function chipHtml(f, removable, i) {
+  const th = f.thumb ? `<img src="${f.thumb}">` : esc(KIND_LABEL[f.kind] || 'FILE');
+  return `<div class="chip ${f.kind === 'missing' ? 'missing' : ''}" title="${esc(f.path)}"><span class="th">${th}</span><span><div class="nm">${esc(f.name)}</div><div class="sz">${esc(f.size || f.error || '')}</div></span>${removable ? `<button class="x" data-i="${i}" title="Remove">✕</button>` : ''}</div>`;
+}
+function renderTray() {
+  const tray = $('tray');
+  tray.classList.toggle('hidden', !pending.length);
+  tray.innerHTML = pending.map((f, i) => chipHtml(f, true, i)).join('');
+  tray.querySelectorAll('.x').forEach((b) => (b.onclick = () => { pending.splice(Number(b.dataset.i), 1); renderTray(); }));
+}
+async function addFiles(paths) {
+  paths = paths.filter((p) => p && !pending.some((f) => f.path === p));
+  if (!paths.length) return;
+  pending.push(...(await window.jarvis.fileInfo(paths)));
+  renderTray();
+  input.focus();
+}
+let dragDepth = 0;
+const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+window.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
+window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) document.body.classList.remove('dragging'); });
+window.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  document.body.classList.remove('dragging');
+  const paths = [...(e.dataTransfer?.files || [])].map((f) => window.jarvis.pathForFile(f)).filter(Boolean);
+  addFiles(paths);
+});
+input.addEventListener('paste', async (e) => {
+  const files = [...(e.clipboardData?.files || [])];
+  if (!files.length) return;
+  e.preventDefault();
+  const paths = [];
+  for (const f of files) {
+    const p = window.jarvis.pathForFile(f);
+    if (p) paths.push(p);
+    else paths.push(await window.jarvis.savePasted(f.name || 'pasted.png', new Uint8Array(await f.arrayBuffer())));
+  }
+  addFiles(paths);
+});
+
+// ---------- connectors ----------
+const STATUS_LABEL = { connected: 'Online', connecting: 'Connecting', 'needs-auth': 'Sign in', error: 'Error', disabled: 'Off', disconnected: 'Offline' };
+function renderServers() {
+  const ul = $('servers');
+  $('addHiggs').classList.toggle('hidden', mcpServers.some((s) => /mcp\.higgsfield\.ai/.test(s.url || '')));
+  if (!mcpServers.length) {
+    ul.innerHTML = '<li class="none">None yet. Add Higgsfield in one click, or any MCP server.</li>';
+  } else {
+    ul.innerHTML = '';
+    for (const s of mcpServers) {
+      const li = document.createElement('li');
+      const where = s.type === 'stdio' ? [s.command, ...(s.args || [])].join(' ') : s.url;
+      const primary =
+        s.status === 'needs-auth' ? '<button class="hbtn solid" data-a="connect">Sign in</button>'
+        : s.status === 'error' || s.status === 'disconnected' ? '<button class="hbtn" data-a="connect">Reconnect</button>'
+        : '';
+      li.innerHTML = `<div class="srv-top"><div style="min-width:0"><div class="srv-name">${esc(s.name)}</div><div class="srv-url">${esc(where || '')}</div></div><span class="pill st-${s.status}">${STATUS_LABEL[s.status] || s.status}${s.status === 'connected' ? ` · ${s.toolCount}` : ''}</span></div>
+        ${s.error && s.status === 'error' ? `<div class="srv-err">${esc(s.error)}</div>` : ''}
+        <div class="srv-actions">${primary}
+          <button class="hbtn" data-a="toggle">${s.enabled ? 'Disable' : 'Enable'}</button>
+          ${s.type === 'http' && s.status === 'connected' ? '<button class="hbtn" data-a="signout">Sign out</button>' : ''}
+          <button class="hbtn danger" data-a="remove">Remove</button></div>`;
+      li.querySelectorAll('[data-a]').forEach((b) => (b.onclick = () => serverAction(s, b.dataset.a)));
+      ul.appendChild(li);
+    }
+  }
+  const on = mcpServers.filter((s) => s.status === 'connected');
+  const cs = $('connState');
+  cs.textContent = mcpServers.length ? `${on.length}/${mcpServers.length} ONLINE` : 'NONE';
+  cs.className = !mcpServers.length ? '' : on.length === mcpServers.filter((s) => s.enabled).length ? 'ok' : 'warn';
+}
+async function serverAction(s, a) {
+  if (a === 'connect') {
+    $('srvMsg').textContent = s.type === 'http' ? 'A browser window may open to sign in…' : '';
+    const r = await window.jarvis.mcpConnect(s.id);
+    if (!r.ok) alertBox(`${s.name}: ${r.message}`);
+  } else if (a === 'toggle') await window.jarvis.mcpToggle(s.id, !s.enabled);
+  else if (a === 'signout') await window.jarvis.mcpSignOut(s.id);
+  else if (a === 'remove' && confirm(`Remove ${s.name}?`)) await window.jarvis.mcpRemove(s.id);
+  mcpServers = await window.jarvis.mcpStatus();
+  renderServers();
+}
+function alertBox(msg) {
+  $('srvMsg').textContent = msg;
+}
+window.jarvis.onMcp((st) => {
+  mcpServers = st;
+  renderServers();
+});
 
 // ---------- voice out ----------
 let voices = [];
@@ -663,6 +771,33 @@ document.addEventListener('keydown', (e) => {
   }
 });
 $('send').onclick = () => submit();
+$('attach').onclick = async () => addFiles(await window.jarvis.pickFiles());
+$('addHiggs').onclick = async () => {
+  const r = await window.jarvis.mcpAdd({ preset: 'higgsfield' });
+  if (!r.ok) alertBox(r.message);
+  else $('srvMsg').textContent = 'Opening Higgsfield sign-in in your browser…';
+};
+$('showAddServer').onclick = () => $('addServerForm').classList.toggle('hidden');
+$('cancelAddServer').onclick = () => $('addServerForm').classList.add('hidden');
+$('srvType').onchange = () => {
+  const local = $('srvType').value === 'stdio';
+  $('srvUrl').classList.toggle('hidden', local);
+  $('srvCmd').classList.toggle('hidden', !local);
+};
+$('addServer').onclick = async () => {
+  const type = $('srvType').value;
+  const def = { name: $('srvName').value.trim() || 'Server', type };
+  if (type === 'http') def.url = $('srvUrl').value.trim();
+  else {
+    const parts = $('srvCmd').value.trim().match(/"[^"]*"|\S+/g) || [];
+    def.command = (parts.shift() || '').replace(/"/g, '');
+    def.args = parts.map((p) => p.replace(/^"|"$/g, ''));
+  }
+  const r = await window.jarvis.mcpAdd(def);
+  if (!r.ok) return ($('srvMsg').textContent = r.message);
+  $('srvMsg').textContent = type === 'http' ? 'Added — a browser window may open to sign in.' : 'Added — starting it up.';
+  $('srvName').value = $('srvUrl').value = $('srvCmd').value = '';
+};
 $('stop').onclick = () => window.jarvis.stop();
 $('mic').onclick = listen;
 $('newChat').onclick = newChat;
@@ -687,6 +822,8 @@ window.jarvis.onFocusInput(() => input.focus());
   greet();
   refreshMembank();
   pollStats();
+  mcpServers = await window.jarvis.mcpStatus();
+  renderServers();
   await boot();
   if (!settings.hasApiKey) openSettings();
   input.focus();

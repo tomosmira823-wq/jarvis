@@ -1,13 +1,13 @@
 {
   "name": "jarvis",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Jarvis — a Claude-powered assistant that controls your Windows PC",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win --x64",
     "release": "electron-builder --win --x64 --publish always",
-    "check": "node --check src/ui/reactor.js && node --check src/main.js && node --check src/agent.js && node --check src/tools.js && node --check src/voice.js && node --check src/preload.js && node --check src/ui/renderer.js"
+    "check": "node --check src/mcp.js && node --check src/attachments.js && node --check src/ui/reactor.js && node --check src/main.js && node --check src/agent.js && node --check src/tools.js && node --check src/voice.js && node --check src/preload.js && node --check src/ui/renderer.js"
   },
   "repository": {
     "type": "git",
@@ -21,6 +21,7 @@
   "homepage": "https://github.com/tomosmira823-wq/jarvis#readme",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "electron-log": "^5.4.4",
     "electron-updater": "^6.8.9"
   },
