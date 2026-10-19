@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('jarvis', {
   checkUpdates: () => ipcRenderer.invoke('check-updates'),
   installUpdate: () => ipcRenderer.invoke('install-update'),
   openLogs: () => ipcRenderer.invoke('open-logs'),
+  sysStats: () => ipcRenderer.invoke('sys-stats'),
   onEvent: (cb) => ipcRenderer.on('agent-event', (_e, d) => cb(d)),
   onUpdate: (cb) => ipcRenderer.on('update-status', (_e, d) => cb(d)),
   onFocusInput: (cb) => ipcRenderer.on('focus-input', () => cb()),

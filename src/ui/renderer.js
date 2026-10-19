@@ -2,13 +2,14 @@ const $ = (id) => document.getElementById(id);
 const log = $('log');
 const input = $('input');
 let settings = {};
-let current = null; // { el, body, text }
+let current = null;
 let tools = {};
 let busy = false;
+let sessionTokens = 0;
 
-// ---------- tiny markdown ----------
+// ---------- helpers ----------
 function esc(s) {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 function inline(s) {
   return esc(s)
@@ -20,15 +21,12 @@ function inline(s) {
 }
 function md(src) {
   const out = [];
-  const parts = src.split(/```/);
-  parts.forEach((part, i) => {
+  src.split(/```/).forEach((part, i) => {
     if (i % 2) {
-      const code = part.replace(/^[\w+-]*\n/, '');
-      out.push(`<pre><code>${esc(code.replace(/\n$/, ''))}</code></pre>`);
+      out.push(`<pre><code>${esc(part.replace(/^[\w+-]*\n/, '').replace(/\n$/, ''))}</code></pre>`);
       return;
     }
-    const blocks = part.split(/\n{2,}/);
-    for (const b of blocks) {
+    for (const b of part.split(/\n{2,}/)) {
       if (!b.trim()) continue;
       const lines = b.split('\n');
       if (lines.every((l) => /^\s*[-*•]\s+/.test(l) || !l.trim())) {
@@ -42,30 +40,182 @@ function md(src) {
   });
   return out.join('');
 }
+const hhmmss = (d = new Date()) => d.toLocaleTimeString('en-GB', { hour12: false });
+function fmtBytes(b) {
+  if (!b && b !== 0) return '—';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return `${b.toFixed(b >= 100 || i === 0 ? 0 : 1)} ${u[i]}`;
+}
+function fmtUptime(s) {
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d ? `${d}d ${h}h ${m}m` : `${h}h ${String(m).padStart(2, '0')}m`;
+}
+
+// ---------- HUD state ----------
+let errorTimer = null;
+function hudState(state, sub) {
+  const labels = {
+    idle: ['STANDING BY', 'Awaiting instruction'],
+    thinking: ['PROCESSING', 'Working on it'],
+    listening: ['LISTENING', 'Go ahead'],
+    speaking: ['SPEAKING', ''],
+    error: ['ALERT', ''],
+  };
+  const [main, defSub] = labels[state] || labels.idle;
+  $('stateMain').textContent = main;
+  $('stateSub').textContent = sub ?? defSub;
+  window.Reactor.setState(state);
+}
+function settleState() {
+  if (busy) hudState('thinking');
+  else if (document.body.classList.contains('listening')) hudState('listening');
+  else if (document.body.classList.contains('speaking')) hudState('speaking', 'Voice output active');
+  else hudState('idle');
+}
+
+// ---------- clock ----------
+function tickClock() {
+  const d = new Date();
+  $('clock').textContent = hhmmss(d);
+  $('date').textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+// ---------- system stats ----------
+const cpuHistory = [];
+const spark = $('cpuSpark');
+function drawSpark() {
+  const r = spark.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  spark.width = r.width * dpr;
+  spark.height = r.height * dpr;
+  const c = spark.getContext('2d');
+  c.scale(dpr, dpr);
+  c.clearRect(0, 0, r.width, r.height);
+  if (cpuHistory.length < 2) return;
+  const step = r.width / 59;
+  c.beginPath();
+  cpuHistory.forEach((v, i) => {
+    const x = r.width - (cpuHistory.length - 1 - i) * step;
+    const y = r.height - 4 - (v / 100) * (r.height - 10);
+    i ? c.lineTo(x, y) : c.moveTo(x, y);
+  });
+  c.strokeStyle = 'rgba(95,220,255,.9)';
+  c.lineWidth = 1.5;
+  c.shadowColor = '#5fdcff';
+  c.shadowBlur = 6;
+  c.stroke();
+  c.lineTo(r.width, r.height);
+  c.lineTo(r.width - (cpuHistory.length - 1) * step, r.height);
+  c.closePath();
+  const g = c.createLinearGradient(0, 0, 0, r.height);
+  g.addColorStop(0, 'rgba(95,220,255,.22)');
+  g.addColorStop(1, 'rgba(95,220,255,0)');
+  c.fillStyle = g;
+  c.shadowBlur = 0;
+  c.fill();
+}
+async function pollStats() {
+  try {
+    const s = await window.jarvis.sysStats();
+    const cpu = s.cpu;
+    cpuHistory.push(cpu);
+    if (cpuHistory.length > 60) cpuHistory.shift();
+    $('cpuPct').textContent = cpu;
+    const arc = $('cpuArc');
+    arc.style.strokeDasharray = `${(cpu / 100) * 314.16} 314.16`;
+    arc.style.stroke = cpu > 85 ? 'var(--red)' : cpu > 65 ? 'var(--amber)' : 'var(--c)';
+    $('loadWord').textContent = cpu > 85 ? 'CRITICAL' : cpu > 65 ? 'HEAVY' : cpu > 30 ? 'ACTIVE' : 'NOMINAL';
+    $('cores').textContent = `${s.cores} THREADS`;
+    $('uptime').textContent = fmtUptime(s.uptime);
+    const memPct = (s.memUsed / s.memTotal) * 100;
+    $('memTxt').textContent = `${fmtBytes(s.memUsed)} / ${fmtBytes(s.memTotal)}`;
+    $('memBar').style.width = memPct + '%';
+    $('memBar').classList.toggle('warn', memPct > 85);
+    if (s.disk) {
+      const dp = (s.disk.used / s.disk.total) * 100;
+      $('diskTxt').textContent = `${fmtBytes(s.disk.used)} / ${fmtBytes(s.disk.total)}`;
+      $('diskBar').style.width = dp + '%';
+      $('diskBar').classList.toggle('warn', dp > 90);
+    }
+    $('host').textContent = s.host.toUpperCase();
+    $('user').textContent = s.user;
+    $('ip').textContent = s.ip;
+    $('cpuName').textContent = s.cpuName;
+    $('cpuName').title = s.cpuName;
+    drawSpark();
+  } catch {}
+}
+setInterval(pollStats, 1500);
+
+function refreshCoreStatus() {
+  const names = { 'claude-opus-5-5': 'OPUS 5.5', 'claude-sonnet-5-5': 'SONNET 5.5', 'claude-haiku-5-5': 'HAIKU 5.5' };
+  $('modelName').textContent = names[settings.model] || settings.model;
+  const a = $('authority');
+  a.textContent = settings.askBeforeActions ? 'SUPERVISED' : 'FULL CONTROL';
+  a.className = settings.askBeforeActions ? 'warn' : 'ok';
+  const v = $('voiceState');
+  v.textContent = settings.speak ? 'ONLINE' : 'MUTED';
+  v.className = settings.speak ? 'ok' : 'warn';
+  const u = $('uplink');
+  u.textContent = settings.hasApiKey ? 'ESTABLISHED' : 'NO KEY';
+  u.className = settings.hasApiKey ? 'ok' : 'bad';
+  $('linkDot').className = 'dot' + (settings.hasApiKey ? '' : ' bad');
+  $('linkTxt').textContent = settings.hasApiKey ? 'SECURE LINK' : 'NO UPLINK — ADD API KEY';
+  $('build').textContent = 'v' + settings.version;
+}
+
+// ---------- activity feed + memory bank ----------
+const feedItems = {};
+function feedAdd(evt) {
+  const feed = $('feed');
+  feed.querySelector('.none')?.remove();
+  const li = document.createElement('li');
+  li.innerHTML = `<span class="fdot"></span><div><div><span class="fn">${esc(evt.name)}</span> <span class="ft">${hhmmss()}</span></div><div class="fs">${esc(summarise(evt.name, evt.input))}</div></div>`;
+  feed.prepend(li);
+  feedItems[evt.id] = li;
+  while (feed.children.length > 40) feed.lastChild.remove();
+}
+function feedDone(evt) {
+  const li = feedItems[evt.id];
+  if (li) li.classList.add(evt.ok ? 'ok' : 'err');
+  delete feedItems[evt.id];
+}
+async function refreshMembank() {
+  const items = await window.jarvis.getMemory();
+  const ul = $('membank');
+  ul.innerHTML = items.length
+    ? items.slice(-8).reverse().map((m) => `<li>${esc(m.fact)}</li>`).join('')
+    : '<li class="none">Empty. Say "remember that…"</li>';
+}
 
 // ---------- chat rendering ----------
 function scroll() {
   log.scrollTop = log.scrollHeight;
 }
-function hideEmpty() {
+function startChatLayout() {
   $('empty').classList.add('hidden');
+  document.body.classList.add('chatting');
 }
 function addUser(text) {
-  hideEmpty();
+  startChatLayout();
   const el = document.createElement('div');
   el.className = 'msg user';
-  el.innerHTML = `<div class="bubble">${esc(text)}</div>`;
+  el.innerHTML = `<div class="who"><time>${hhmmss()}</time>${esc((settings.callMe || 'YOU').toUpperCase())}</div><div class="bubble">${esc(text)}</div>`;
   log.appendChild(el);
   scroll();
 }
 function ensureJarvis() {
   if (current) return current;
-  hideEmpty();
+  startChatLayout();
   const el = document.createElement('div');
   el.className = 'msg jarvis';
-  el.innerHTML = '<div class="who">JARVIS</div><div class="stream"></div>';
+  el.innerHTML = `<div class="who">JARVIS<time>${hhmmss()}</time></div><div class="stream"></div>`;
   log.appendChild(el);
-  current = { el, stream: el.querySelector('.stream'), seg: null, segText: '', all: '' };
+  current = { el, stream: el.querySelector('.stream'), seg: null, segText: '' };
   return current;
 }
 function textSeg() {
@@ -87,9 +237,10 @@ function closeSeg() {
 }
 function summarise(name, input) {
   if (!input) return '';
-  if (name === 'run_powershell') return input.script.split('\n')[0];
+  if (name === 'run_powershell') return (input.script || '').split('\n')[0];
   if (name === 'mouse') return `${input.action}${input.x != null ? ` @ ${input.x},${input.y}` : ''}`;
   if (name === 'keyboard') return input.keys || JSON.stringify(input.text);
+  if (name === 'screenshot') return 'capturing primary display';
   return Object.values(input).map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).join(' ').split('\n')[0];
 }
 function addTool(evt) {
@@ -98,16 +249,21 @@ function addTool(evt) {
   const d = document.createElement('details');
   d.className = 'tool';
   const full = evt.name === 'run_powershell' ? evt.input.script : JSON.stringify(evt.input, null, 2);
-  d.innerHTML = `<summary><span class="dot"></span><span class="tname">${esc(evt.name)}</span><span class="tsum">${esc(summarise(evt.name, evt.input))}</span></summary><pre class="in">${esc(full)}</pre><pre class="out">…</pre>`;
+  d.innerHTML = `<summary><span class="tag2">EXEC</span><span class="tname">${esc(evt.name)}</span><span class="tsum">${esc(summarise(evt.name, evt.input))}</span></summary><pre class="in">${esc(full)}</pre><pre class="out">…</pre>`;
   c.stream.appendChild(d);
   tools[evt.id] = d;
+  feedAdd(evt);
+  $('stateSub').textContent = `Executing ${evt.name.replace(/_/g, ' ')}`;
   scroll();
 }
 function toolResult(evt) {
+  feedDone(evt);
   const d = tools[evt.id];
   if (!d) return;
   d.classList.add(evt.ok ? 'ok' : 'err');
+  d.querySelector('.tag2').textContent = evt.ok ? 'DONE' : 'FAIL';
   d.querySelector('.out').textContent = evt.preview || '(no output)';
+  if (busy) $('stateSub').textContent = 'Working on it';
 }
 function addApproval(evt) {
   closeSeg();
@@ -115,15 +271,17 @@ function addApproval(evt) {
   const box = document.createElement('div');
   box.className = 'approval';
   const what = evt.tool === 'run_powershell' ? evt.input.script : JSON.stringify(evt.input, null, 2);
-  box.innerHTML = `<div class="t">Allow ${esc(evt.tool)}?</div><pre>${esc(what)}</pre><div class="row"><button class="btn primary">Allow</button><button class="btn danger">Deny</button></div>`;
+  box.innerHTML = `<div class="t">Authorisation required — ${esc(evt.tool)}</div><pre>${esc(what)}</pre><div class="row"><button class="hbtn solid">Authorise</button><button class="hbtn danger">Deny</button></div>`;
   const [yes, no] = box.querySelectorAll('button');
   const answer = (ok) => {
     window.jarvis.approve(evt.id, ok);
-    box.innerHTML = `<div class="sub">${ok ? 'Allowed' : 'Denied'} ${esc(evt.tool)}</div>`;
+    box.innerHTML = `<div class="t" style="margin:0">${ok ? 'Authorised' : 'Denied'} — ${esc(evt.tool)}</div>`;
+    settleState();
   };
   yes.onclick = () => answer(true);
   no.onclick = () => answer(false);
   c.stream.appendChild(box);
+  hudState('listening', 'Awaiting your authorisation');
   yes.focus();
   scroll();
 }
@@ -133,16 +291,20 @@ function addError(message) {
   el.className = 'error';
   el.textContent = message;
   (current ? current.stream : log).appendChild(el);
+  startChatLayout();
+  hudState('error', 'See message');
+  clearTimeout(errorTimer);
+  errorTimer = setTimeout(settleState, 3500);
   scroll();
 }
 
-// ---------- state ----------
 function setBusy(b) {
   busy = b;
   document.body.classList.toggle('busy', b);
   $('send').classList.toggle('hidden', b);
   $('stop').classList.toggle('hidden', !b);
-  $('status').textContent = b ? 'Working…' : 'Online';
+  if (b) hudState('thinking');
+  else if (Reactor.state !== 'error') settleState();
 }
 
 window.jarvis.onEvent((evt) => {
@@ -154,8 +316,8 @@ window.jarvis.onEvent((evt) => {
       if (!evt.delta.trim() && !(current && current.seg)) break;
       const c = textSeg();
       c.segText += evt.delta;
-      c.all += evt.delta;
       c.seg.innerHTML = md(c.segText);
+      window.Reactor.pulse();
       scroll();
       break;
     }
@@ -164,6 +326,7 @@ window.jarvis.onEvent((evt) => {
       break;
     case 'tool-result':
       toolResult(evt);
+      if (evt.ok && /memory/i.test(evt.preview)) refreshMembank();
       break;
     case 'approval':
       addApproval(evt);
@@ -173,11 +336,15 @@ window.jarvis.onEvent((evt) => {
       break;
     case 'done': {
       closeSeg();
-      if (current && evt.usage && (evt.usage.input || evt.usage.output)) {
-        const m = document.createElement('div');
-        m.className = 'meta';
-        m.textContent = `${evt.stopped ? 'Stopped · ' : ''}${evt.usage.input.toLocaleString()} in · ${evt.usage.output.toLocaleString()} out tokens`;
-        current.el.appendChild(m);
+      if (evt.usage && (evt.usage.input || evt.usage.output)) {
+        sessionTokens += evt.usage.input + evt.usage.output;
+        $('tokens').textContent = sessionTokens.toLocaleString();
+        if (current) {
+          const m = document.createElement('div');
+          m.className = 'meta';
+          m.textContent = `${evt.stopped ? 'ABORTED · ' : ''}${evt.usage.input.toLocaleString()} IN · ${evt.usage.output.toLocaleString()} OUT`;
+          current.el.appendChild(m);
+        }
       }
       if (!evt.stopped && evt.text) speak(evt.text);
       current = null;
@@ -205,18 +372,17 @@ async function submit(text) {
   window.jarvis.send(text);
 }
 
-// ---------- voice ----------
+// ---------- voice out ----------
 let voices = [];
+let speakTimer = null;
 function loadVoices() {
   voices = speechSynthesis.getVoices();
   const sel = $('voiceName');
   const prev = settings.voiceName || sel.value;
-  sel.innerHTML = '<option value="">Auto (British male if available)</option>' +
-    voices.map((v) => `<option value="${esc(v.name)}">${esc(v.name)}</option>`).join('');
+  sel.innerHTML = '<option value="">Auto (British male if available)</option>' + voices.map((v) => `<option value="${esc(v.name)}">${esc(v.name)}</option>`).join('');
   sel.value = prev || '';
 }
 speechSynthesis.onvoiceschanged = loadVoices;
-
 function pickVoice() {
   if (settings.voiceName) {
     const v = voices.find((x) => x.name === settings.voiceName);
@@ -229,8 +395,8 @@ function pickVoice() {
     null
   );
 }
-function speak(text) {
-  if (!settings.speak) return;
+function speak(text, force) {
+  if (!settings.speak && !force) return;
   const clean = text
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`([^`]+)`/g, '$1')
@@ -243,32 +409,82 @@ function speak(text) {
   const v = pickVoice();
   if (v) u.voice = v;
   u.rate = 1.04;
-  u.onstart = () => document.body.classList.add('speaking');
-  u.onend = u.onerror = () => document.body.classList.remove('speaking');
+  u.onstart = () => {
+    document.body.classList.add('speaking');
+    if (!busy) hudState('speaking', 'Voice output active');
+    clearInterval(speakTimer);
+    // the speech API gives no audio levels, so animate a believable envelope
+    speakTimer = setInterval(() => window.Reactor.setLevel(0.35 + Math.random() * 0.55), 90);
+  };
+  u.onboundary = () => window.Reactor.pulse();
+  u.onend = u.onerror = () => {
+    clearInterval(speakTimer);
+    window.Reactor.setLevel(0);
+    document.body.classList.remove('speaking');
+    settleState();
+  };
   speechSynthesis.cancel();
   speechSynthesis.speak(u);
 }
 function stopSpeaking() {
   speechSynthesis.cancel();
+  clearInterval(speakTimer);
+  window.Reactor.setLevel(0);
   document.body.classList.remove('speaking');
 }
 
+// ---------- voice in ----------
+let micStream = null;
+let micRaf = null;
+async function startMicMeter() {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ac = new AudioContext();
+    const src = ac.createMediaStreamSource(micStream);
+    const an = ac.createAnalyser();
+    an.fftSize = 512;
+    src.connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    const loop = () => {
+      an.getByteTimeDomainData(buf);
+      let peak = 0;
+      for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
+      window.Reactor.setLevel(Math.min(1, peak / 50));
+      micRaf = requestAnimationFrame(loop);
+    };
+    loop();
+    micStream._ac = ac;
+  } catch {
+    window.Reactor.setLevel(0.4);
+  }
+}
+function stopMicMeter() {
+  cancelAnimationFrame(micRaf);
+  if (micStream) {
+    micStream.getTracks().forEach((t) => t.stop());
+    micStream._ac?.close();
+    micStream = null;
+  }
+  window.Reactor.setLevel(0);
+}
 async function listen() {
   if (busy || document.body.classList.contains('listening')) return;
   stopSpeaking();
   document.body.classList.add('listening');
-  $('status').textContent = 'Listening…';
+  hudState('listening');
+  startMicMeter();
   const r = await window.jarvis.listen();
+  stopMicMeter();
   document.body.classList.remove('listening');
-  $('status').textContent = 'Online';
+  settleState();
   if (r.ok) submit(r.text);
   else {
     $('foot').textContent = r.message;
-    setTimeout(resetFoot, 4000);
+    setTimeout(resetFoot, 4500);
   }
 }
 function resetFoot() {
-  $('foot').innerHTML = `Enter to send · Shift+Enter new line · Ctrl+M to talk · ${esc(settings.hotkey || '')} to summon`;
+  $('foot').textContent = `Enter execute · Shift+Enter new line · Ctrl+M speak · Esc abort · ${settings.hotkey || ''} summon`;
 }
 
 // ---------- settings ----------
@@ -294,9 +510,11 @@ function fillSettings() {
   $('webSearch').checked = !!settings.webSearch;
   $('launchAtStartup').checked = !!settings.launchAtStartup;
   $('startHidden').checked = !!settings.startHidden;
+  $('bootAnim').checked = settings.bootAnim !== false;
   $('versionLine').textContent = `Jarvis v${settings.version}`;
   loadVoices();
   resetFoot();
+  refreshCoreStatus();
 }
 async function refreshMemory() {
   const items = await window.jarvis.getMemory();
@@ -313,6 +531,7 @@ async function refreshMemory() {
       items.splice(i, 1);
       await window.jarvis.setMemory(items);
       refreshMemory();
+      refreshMembank();
     };
     ul.appendChild(li);
   });
@@ -328,6 +547,7 @@ async function saveSettings() {
     webSearch: $('webSearch').checked,
     launchAtStartup: $('launchAtStartup').checked,
     startHidden: $('startHidden').checked,
+    bootAnim: $('bootAnim').checked,
   };
   const key = $('apiKey').value.trim();
   if (key) payload.apiKey = key;
@@ -347,11 +567,11 @@ window.jarvis.onUpdate((u) => {
   if (u.state === 'ready') {
     b.classList.remove('hidden');
     btn.classList.remove('hidden');
-    t.textContent = `Jarvis v${u.version} is ready.`;
+    t.textContent = `Upgrade v${u.version} ready to install`;
   } else if (u.state === 'downloading') {
     b.classList.remove('hidden');
     btn.classList.add('hidden');
-    t.textContent = u.percent != null ? `Downloading update… ${u.percent}%` : `Downloading v${u.version}…`;
+    t.textContent = u.percent != null ? `Downloading upgrade… ${u.percent}%` : `Downloading v${u.version}…`;
   } else if (u.state === 'latest') {
     $('versionLine').textContent = `Jarvis v${u.version} — up to date`;
   } else if (u.state === 'error' || u.state === 'dev') {
@@ -361,16 +581,52 @@ window.jarvis.onUpdate((u) => {
   }
 });
 
-// ---------- misc ----------
-function greet() {
+// ---------- boot sequence ----------
+function partOfDay() {
   const h = new Date().getHours();
-  const part = h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
-  $('greeting').textContent = `${part}, ${settings.callMe || 'sir'}.`;
-  $('emptyHint').textContent = settings.hasApiKey ? 'What can I do for you?' : 'Add your Anthropic API key in Settings to bring me online.';
+  return h < 5 ? 'Working late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 }
+function greet() {
+  $('greeting').textContent = `${partOfDay()}, ${settings.callMe || 'sir'}.`;
+  $('emptyHint').textContent = settings.hasApiKey ? 'All systems are online. What can I do for you?' : 'Uplink offline. Add your Anthropic API key in Config to bring me online.';
+}
+async function boot() {
+  const finish = () => {
+    document.body.classList.remove('booting');
+    pollStats();
+  };
+  if (settings.bootAnim === false) return finish();
+  const lines = [
+    ['JARVIS PERSONAL INTELLIGENCE SYSTEM — BUILD ' + settings.version, ''],
+    ['INITIALISING NEURAL INTERFACE', 'OK'],
+    ['MOUNTING LOCAL FILE SYSTEMS', 'OK'],
+    ['ATTACHING POWERSHELL EXECUTION LAYER', 'OK'],
+    ['CALIBRATING VOICE SYNTHESIS', 'OK'],
+    ['ESTABLISHING SECURE UPLINK', settings.hasApiKey ? 'OK' : 'NO KEY'],
+    ['LOADING MEMORY BANK', 'OK'],
+    ['ALL SYSTEMS NOMINAL', ''],
+  ];
+  const box = $('bootLines');
+  for (let i = 0; i < lines.length; i++) {
+    const [txt, status] = lines[i];
+    const div = document.createElement('div');
+    const dots = status ? ' ' + '.'.repeat(Math.max(3, 44 - txt.length)) + ' ' : '';
+    div.innerHTML = `&gt; ${esc(txt)}${dots}${status ? `<span class="${status === 'OK' ? 'ok' : 'warn'}">${status}</span>` : ''}`;
+    box.appendChild(div);
+    $('bootBar').style.width = ((i + 1) / lines.length) * 100 + '%';
+    await new Promise((r) => setTimeout(r, i === 0 ? 350 : 190));
+  }
+  await new Promise((r) => setTimeout(r, 450));
+  finish();
+  if (settings.hasApiKey && settings.speak && document.visibilityState === 'visible') {
+    setTimeout(() => speak(`${partOfDay()}, ${settings.callMe || 'sir'}. All systems are online.`), 500);
+  }
+}
+
+// ---------- misc ----------
 function autosize() {
   input.style.height = 'auto';
-  input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+  input.style.height = Math.min(input.scrollHeight, 180) + 'px';
 }
 async function newChat() {
   await window.jarvis.newChat();
@@ -379,6 +635,8 @@ async function newChat() {
   tools = {};
   [...log.children].forEach((c) => c.id !== 'empty' && c.remove());
   $('empty').classList.remove('hidden');
+  document.body.classList.remove('chatting');
+  settleState();
   input.focus();
 }
 
@@ -420,13 +678,16 @@ $('testKey').onclick = async () => {
   const r = await window.jarvis.testKey($('apiKey').value.trim());
   $('keyState').textContent = r.ok ? 'Key works.' : `Failed: ${r.message}`;
 };
-document.querySelectorAll('.chip').forEach((c) => (c.onclick = () => submit(c.textContent)));
+document.querySelectorAll('.proto').forEach((c) => (c.onclick = () => submit(c.textContent)));
 window.jarvis.onFocusInput(() => input.focus());
 
 (async () => {
   settings = await window.jarvis.getSettings();
   fillSettings();
   greet();
+  refreshMembank();
+  pollStats();
+  await boot();
   if (!settings.hasApiKey) openSettings();
   input.focus();
 })();

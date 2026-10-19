@@ -2,70 +2,168 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; media-src 'self' mediastream:">
 <title>Jarvis</title>
 <link rel="stylesheet" href="styles.css">
 </head>
-<body>
-<div class="app">
-  <header class="top">
-    <div class="brand">
-      <div class="orb small" id="orbSmall"><span></span></div>
+<body class="booting">
+
+<!-- boot sequence -->
+<div class="boot" id="boot">
+  <div class="boot-inner">
+    <div class="boot-ring"><i></i><i></i><i></i></div>
+    <div class="boot-title">JARVIS</div>
+    <div class="boot-lines" id="bootLines"></div>
+    <div class="boot-bar"><span id="bootBar"></span></div>
+  </div>
+</div>
+
+<div class="hud">
+  <!-- title bar (drag region) -->
+  <header class="titlebar">
+    <div class="tb-left">
+      <div class="mark"><span></span></div>
       <div>
-        <div class="name">JARVIS</div>
-        <div class="status" id="status">Online</div>
+        <div class="logo">JARVIS</div>
+        <div class="tag">Personal Intelligence System</div>
       </div>
     </div>
-    <div class="top-actions">
-      <button class="icon-btn" id="newChat" title="New chat (Ctrl+N)">
-        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    <div class="tb-center">
+      <div class="clock" id="clock">00:00:00</div>
+      <div class="date" id="date">—</div>
+    </div>
+    <div class="tb-right">
+      <button class="hbtn" id="newChat" title="New session (Ctrl+N)">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>New</span>
       </button>
-      <button class="icon-btn" id="openSettings" title="Settings">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      <button class="hbtn" id="openSettings" title="Settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span>Config</span>
       </button>
     </div>
   </header>
 
   <div class="banner hidden" id="updateBanner">
-    <span id="updateText"></span>
-    <button class="btn small" id="installUpdate">Restart now</button>
+    <span class="blip"></span><span id="updateText"></span>
+    <button class="hbtn solid" id="installUpdate">Restart now</button>
   </div>
 
-  <main class="log" id="log">
-    <div class="empty" id="empty">
-      <div class="orb big" id="orbBig"><span></span></div>
-      <h1 id="greeting">Good evening.</h1>
-      <p class="hint" id="emptyHint">Tell me what you need doing.</p>
-      <div class="chips">
-        <button class="chip">What's using all my RAM?</button>
-        <button class="chip">Open Spotify and play something chill</button>
-        <button class="chip">Tidy my Downloads folder into subfolders by type</button>
-        <button class="chip">What's on my screen?</button>
+  <!-- left column -->
+  <aside class="col left">
+    <section class="panel">
+      <h3><b>◢</b> System diagnostics <em>SYS-01</em></h3>
+      <div class="gauge-row">
+        <div class="gauge" id="cpuGauge">
+          <svg viewBox="0 0 120 120">
+            <circle class="g-track" cx="60" cy="60" r="50"/>
+            <circle class="g-ticks" cx="60" cy="60" r="56"/>
+            <circle class="g-val" id="cpuArc" cx="60" cy="60" r="50"/>
+          </svg>
+          <div class="g-label"><strong id="cpuPct">0</strong><small>%</small><span>CPU</span></div>
+        </div>
+        <div class="readouts">
+          <div class="ro"><label>Cores</label><span id="cores">—</span></div>
+          <div class="ro"><label>Uptime</label><span id="uptime">—</span></div>
+          <div class="ro"><label>Load</label><span id="loadWord">—</span></div>
+        </div>
+      </div>
+      <div class="meter">
+        <div class="m-head"><label>Memory</label><span id="memTxt">—</span></div>
+        <div class="m-bar"><i id="memBar"></i></div>
+      </div>
+      <div class="meter">
+        <div class="m-head"><label>Drive C:</label><span id="diskTxt">—</span></div>
+        <div class="m-bar"><i id="diskBar"></i></div>
+      </div>
+      <div class="spark"><canvas id="cpuSpark"></canvas></div>
+    </section>
+
+    <section class="panel">
+      <h3><b>◢</b> Host link <em>NET-02</em></h3>
+      <div class="kv"><label>Host</label><span id="host">—</span></div>
+      <div class="kv"><label>Operator</label><span id="user">—</span></div>
+      <div class="kv"><label>Local IP</label><span id="ip">—</span></div>
+      <div class="kv"><label>Processor</label><span id="cpuName" class="clip">—</span></div>
+    </section>
+
+    <section class="panel">
+      <h3><b>◢</b> Core status <em>AI-03</em></h3>
+      <div class="kv"><label>Model</label><span id="modelName">—</span></div>
+      <div class="kv"><label>Authority</label><span id="authority">—</span></div>
+      <div class="kv"><label>Voice</label><span id="voiceState">—</span></div>
+      <div class="kv"><label>Uplink</label><span id="uplink">—</span></div>
+    </section>
+  </aside>
+
+  <!-- centre -->
+  <main class="center">
+    <div class="reactor-wrap" id="reactorWrap">
+      <canvas id="reactor"></canvas>
+      <div class="state">
+        <div class="state-main" id="stateMain">STANDING BY</div>
+        <div class="state-sub" id="stateSub">Awaiting instruction</div>
       </div>
     </div>
+
+    <div class="log" id="log">
+      <div class="empty" id="empty">
+        <div class="greet" id="greeting">Good evening.</div>
+        <div class="hint" id="emptyHint">What can I do for you?</div>
+      </div>
+    </div>
+
+    <footer class="composer">
+      <div class="cbox">
+        <span class="prompt">⟩</span>
+        <textarea id="input" rows="1" placeholder="Give an instruction…" spellcheck="true"></textarea>
+        <button class="cbtn mic" id="mic" title="Speak (Ctrl+M)">
+          <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </button>
+        <button class="cbtn send" id="send" title="Execute (Enter)">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+        <button class="cbtn stop hidden" id="stop" title="Abort (Esc)">
+          <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/></svg>
+        </button>
+      </div>
+      <div class="foot" id="foot"></div>
+    </footer>
   </main>
 
-  <footer class="composer">
-    <div class="box">
-      <textarea id="input" rows="1" placeholder="Ask Jarvis to do something…" spellcheck="true"></textarea>
-      <button class="icon-btn mic" id="mic" title="Talk (Ctrl+M)">
-        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
-      </button>
-      <button class="send" id="send" title="Send (Enter)">
-        <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </button>
-      <button class="send stop hidden" id="stop" title="Stop (Esc)">
-        <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
-      </button>
-    </div>
-    <div class="foot" id="foot">Enter to send · Shift+Enter new line · <span id="hotkeyHint"></span></div>
+  <!-- right column -->
+  <aside class="col right">
+    <section class="panel grow">
+      <h3><b>◢</b> Activity feed <em>OPS-04</em></h3>
+      <ul class="feed" id="feed"><li class="none">No operations yet.</li></ul>
+    </section>
+    <section class="panel">
+      <h3><b>◢</b> Memory bank <em>MEM-05</em></h3>
+      <ul class="membank" id="membank"></ul>
+    </section>
+    <section class="panel">
+      <h3><b>◢</b> Quick protocols <em>QP-06</em></h3>
+      <div class="protocols">
+        <button class="proto">What's using all my RAM?</button>
+        <button class="proto">What's on my screen?</button>
+        <button class="proto">Tidy my Downloads folder by file type</button>
+        <button class="proto">Give me a system health report</button>
+      </div>
+    </section>
+  </aside>
+
+  <!-- bottom ticker -->
+  <footer class="ticker">
+    <span><i class="dot" id="linkDot"></i><b id="linkTxt">SECURE LINK</b></span>
+    <span>SESSION TOKENS <b id="tokens">0</b></span>
+    <span class="tick-scroll"><span id="tickerMsg">ALL SYSTEMS NOMINAL // NEURAL INTERFACE STABLE // AWAITING INSTRUCTION</span></span>
+    <span>BUILD <b id="build">—</b></span>
   </footer>
 </div>
 
+<!-- settings -->
 <aside class="drawer" id="drawer" aria-hidden="true">
   <div class="drawer-head">
-    <h2>Settings</h2>
-    <button class="icon-btn" id="closeSettings" title="Close">
+    <h2><b>◢</b> Configuration</h2>
+    <button class="hbtn" id="closeSettings" title="Close">
       <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
   </div>
@@ -74,13 +172,13 @@
       <label class="lbl" for="apiKey">Anthropic API key</label>
       <div class="row">
         <input type="password" id="apiKey" placeholder="sk-ant-…" autocomplete="off">
-        <button class="btn" id="testKey">Test</button>
+        <button class="hbtn" id="testKey">Test</button>
       </div>
-      <div class="sub" id="keyState">Stored encrypted on this PC. Get one at console.anthropic.com</div>
+      <div class="sub" id="keyState">Stored encrypted on this PC.</div>
     </section>
 
     <section>
-      <label class="lbl" for="model">Model</label>
+      <label class="lbl" for="model">Core model</label>
       <select id="model">
         <option value="claude-opus-5-5">Claude Opus 5.5 — smartest, best at driving the PC</option>
         <option value="claude-sonnet-5-5">Claude Sonnet 5.5 — fast, cheaper (default)</option>
@@ -89,13 +187,13 @@
     </section>
 
     <section>
-      <label class="lbl" for="callMe">What should Jarvis call you?</label>
+      <label class="lbl" for="callMe">Form of address</label>
       <input type="text" id="callMe" placeholder="sir">
     </section>
 
     <section>
       <div class="toggle-row">
-        <div><div class="lbl">Speak replies</div><div class="sub">Read answers out loud</div></div>
+        <div><div class="lbl">Voice output</div><div class="sub">Read answers out loud</div></div>
         <input type="checkbox" class="switch" id="speak">
       </div>
       <select id="voiceName" class="mt"></select>
@@ -104,12 +202,12 @@
     <section>
       <label class="lbl" for="hotkey">Summon hotkey</label>
       <input type="text" id="hotkey" placeholder="Control+Shift+Space">
-      <div class="sub">Works anywhere in Windows. Example: Control+Shift+Space, Alt+J</div>
+      <div class="sub">Works anywhere in Windows. e.g. Control+Shift+Space, Alt+J</div>
     </section>
 
     <section>
       <div class="toggle-row">
-        <div><div class="lbl">Ask before actions</div><div class="sub">Off = full control. On = you approve each command, click and keystroke.</div></div>
+        <div><div class="lbl">Ask before actions</div><div class="sub">Off = full control. On = approve each command, click and keystroke.</div></div>
         <input type="checkbox" class="switch" id="askBeforeActions">
       </div>
       <div class="toggle-row">
@@ -124,11 +222,15 @@
         <div><div class="lbl">Start hidden</div><div class="sub">Open to the tray instead of a window</div></div>
         <input type="checkbox" class="switch" id="startHidden">
       </div>
+      <div class="toggle-row">
+        <div><div class="lbl">Boot sequence</div><div class="sub">Play the start-up animation</div></div>
+        <input type="checkbox" class="switch" id="bootAnim">
+      </div>
     </section>
 
     <section>
       <div class="lbl">Memory</div>
-      <div class="sub">Things Jarvis knows about you in every chat.</div>
+      <div class="sub">What Jarvis knows about you in every session.</div>
       <ul class="memory" id="memory"></ul>
     </section>
 
@@ -136,18 +238,19 @@
       <div class="lbl">About</div>
       <div class="sub" id="versionLine"></div>
       <div class="row mt">
-        <button class="btn" id="checkUpdates">Check for updates</button>
-        <button class="btn ghost" id="openLogs">Open logs</button>
+        <button class="hbtn" id="checkUpdates">Check for updates</button>
+        <button class="hbtn" id="openLogs">Open logs</button>
       </div>
     </section>
   </div>
   <div class="drawer-foot">
     <span class="sub" id="saveMsg"></span>
-    <button class="btn primary" id="saveSettings">Save</button>
+    <button class="hbtn solid" id="saveSettings">Save</button>
   </div>
 </aside>
 <div class="scrim" id="scrim"></div>
 
+<script src="reactor.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

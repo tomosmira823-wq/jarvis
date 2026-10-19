@@ -29,6 +29,7 @@ const DEFAULTS = {
   webSearch: true,
   launchAtStartup: false,
   startHidden: false,
+  bootAnim: true,
 };
 
 let settings = loadSettings();
@@ -99,10 +100,12 @@ function createWindow() {
     minWidth: 560,
     minHeight: 480,
     show: !(settings.startHidden || process.argv.includes('--hidden')),
-    backgroundColor: '#05080d',
+    backgroundColor: '#02060a',
     title: 'Jarvis',
     icon: iconPath(),
     autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#00000000', symbolColor: '#5fdcff', height: 40 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -217,6 +220,51 @@ function buildAgent() {
   });
 }
 
+// ---------- live system readouts for the HUD ----------
+const os = require('os');
+let lastCpu = os.cpus();
+function cpuPercent() {
+  const now = os.cpus();
+  let idle = 0;
+  let total = 0;
+  now.forEach((c, i) => {
+    const p = lastCpu[i] || c;
+    for (const k of Object.keys(c.times)) total += c.times[k] - p.times[k];
+    idle += c.times.idle - p.times.idle;
+  });
+  lastCpu = now;
+  return total > 0 ? Math.round((1 - idle / total) * 100) : 0;
+}
+function diskInfo() {
+  try {
+    const s = fs.statfsSync(process.platform === 'win32' ? 'C:\\' : '/');
+    const total = s.blocks * s.bsize;
+    const free = s.bavail * s.bsize;
+    return { total, used: total - free };
+  } catch {
+    return null;
+  }
+}
+function localIp() {
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const n of list || []) if (n.family === 'IPv4' && !n.internal) return n.address;
+  }
+  return '—';
+}
+ipcMain.handle('sys-stats', () => ({
+  cpu: cpuPercent(),
+  cpuName: (os.cpus()[0]?.model || '').replace(/\s+/g, ' ').trim(),
+  cores: os.cpus().length,
+  memTotal: os.totalmem(),
+  memUsed: os.totalmem() - os.freemem(),
+  disk: diskInfo(),
+  uptime: os.uptime(),
+  host: os.hostname(),
+  user: os.userInfo().username,
+  ip: localIp(),
+  platform: `${os.type()} ${os.release()}`,
+}));
+
 // ---------- IPC ----------
 ipcMain.handle('get-settings', () => {
   const { apiKeyEnc, ...rest } = settings;
@@ -234,7 +282,7 @@ ipcMain.handle('save-settings', (_e, incoming) => {
   const prevHotkey = settings.hotkey;
   if (typeof incoming.apiKey === 'string' && incoming.apiKey.trim()) setApiKey(incoming.apiKey);
   if (incoming.clearApiKey) setApiKey('');
-  for (const k of ['model', 'callMe', 'speak', 'voiceName', 'hotkey', 'askBeforeActions', 'webSearch', 'launchAtStartup', 'startHidden']) {
+  for (const k of ['model', 'callMe', 'speak', 'voiceName', 'hotkey', 'askBeforeActions', 'webSearch', 'launchAtStartup', 'startHidden', 'bootAnim']) {
     if (k in incoming) settings[k] = incoming[k];
   }
   saveSettings();
