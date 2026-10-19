@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Jarvis</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <div class="orb small" id="orbSmall"><span></span></div>
+      <div>
+        <div class="name">JARVIS</div>
+        <div class="status" id="status">Online</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="newChat" title="New chat (Ctrl+N)">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button class="icon-btn" id="openSettings" title="Settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="banner hidden" id="updateBanner">
+    <span id="updateText"></span>
+    <button class="btn small" id="installUpdate">Restart now</button>
+  </div>
+
+  <main class="log" id="log">
+    <div class="empty" id="empty">
+      <div class="orb big" id="orbBig"><span></span></div>
+      <h1 id="greeting">Good evening.</h1>
+      <p class="hint" id="emptyHint">Tell me what you need doing.</p>
+      <div class="chips">
+        <button class="chip">What's using all my RAM?</button>
+        <button class="chip">Open Spotify and play something chill</button>
+        <button class="chip">Tidy my Downloads folder into subfolders by type</button>
+        <button class="chip">What's on my screen?</button>
+      </div>
+    </div>
+  </main>
+
+  <footer class="composer">
+    <div class="box">
+      <textarea id="input" rows="1" placeholder="Ask Jarvis to do something…" spellcheck="true"></textarea>
+      <button class="icon-btn mic" id="mic" title="Talk (Ctrl+M)">
+        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+      <button class="send" id="send" title="Send (Enter)">
+        <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+      <button class="send stop hidden" id="stop" title="Stop (Esc)">
+        <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
+      </button>
+    </div>
+    <div class="foot" id="foot">Enter to send · Shift+Enter new line · <span id="hotkeyHint"></span></div>
+  </footer>
+</div>
+
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <h2>Settings</h2>
+    <button class="icon-btn" id="closeSettings" title="Close">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body">
+    <section>
+      <label class="lbl" for="apiKey">Anthropic API key</label>
+      <div class="row">
+        <input type="password" id="apiKey" placeholder="sk-ant-…" autocomplete="off">
+        <button class="btn" id="testKey">Test</button>
+      </div>
+      <div class="sub" id="keyState">Stored encrypted on this PC. Get one at console.anthropic.com</div>
+    </section>
+
+    <section>
+      <label class="lbl" for="model">Model</label>
+      <select id="model">
+        <option value="claude-opus-5-5">Claude Opus 5.5 — smartest, best at driving the PC</option>
+        <option value="claude-sonnet-5-5">Claude Sonnet 5.5 — fast, cheaper (default)</option>
+        <option value="claude-haiku-5-5">Claude Haiku 5.5 — quickest, cheapest</option>
+      </select>
+    </section>
+
+    <section>
+      <label class="lbl" for="callMe">What should Jarvis call you?</label>
+      <input type="text" id="callMe" placeholder="sir">
+    </section>
+
+    <section>
+      <div class="toggle-row">
+        <div><div class="lbl">Speak replies</div><div class="sub">Read answers out loud</div></div>
+        <input type="checkbox" class="switch" id="speak">
+      </div>
+      <select id="voiceName" class="mt"></select>
+    </section>
+
+    <section>
+      <label class="lbl" for="hotkey">Summon hotkey</label>
+      <input type="text" id="hotkey" placeholder="Control+Shift+Space">
+      <div class="sub">Works anywhere in Windows. Example: Control+Shift+Space, Alt+J</div>
+    </section>
+
+    <section>
+      <div class="toggle-row">
+        <div><div class="lbl">Ask before actions</div><div class="sub">Off = full control. On = you approve each command, click and keystroke.</div></div>
+        <input type="checkbox" class="switch" id="askBeforeActions">
+      </div>
+      <div class="toggle-row">
+        <div><div class="lbl">Web search</div><div class="sub">Let Jarvis search the internet</div></div>
+        <input type="checkbox" class="switch" id="webSearch">
+      </div>
+      <div class="toggle-row">
+        <div><div class="lbl">Start with Windows</div><div class="sub">Runs in the tray, ready on the hotkey</div></div>
+        <input type="checkbox" class="switch" id="launchAtStartup">
+      </div>
+      <div class="toggle-row">
+        <div><div class="lbl">Start hidden</div><div class="sub">Open to the tray instead of a window</div></div>
+        <input type="checkbox" class="switch" id="startHidden">
+      </div>
+    </section>
+
+    <section>
+      <div class="lbl">Memory</div>
+      <div class="sub">Things Jarvis knows about you in every chat.</div>
+      <ul class="memory" id="memory"></ul>
+    </section>
+
+    <section>
+      <div class="lbl">About</div>
+      <div class="sub" id="versionLine"></div>
+      <div class="row mt">
+        <button class="btn" id="checkUpdates">Check for updates</button>
+        <button class="btn ghost" id="openLogs">Open logs</button>
+      </div>
+    </section>
+  </div>
+  <div class="drawer-foot">
+    <span class="sub" id="saveMsg"></span>
+    <button class="btn primary" id="saveSettings">Save</button>
+  </div>
+</aside>
+<div class="scrim" id="scrim"></div>
+
+<script src="renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+{
+  "name": "jarvis",
+  "version": "1.0.0",
+  "description": "Jarvis — a Claude-powered assistant that controls your Windows PC",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64",
+    "release": "electron-builder --win --x64 --publish always",
+    "check": "node --check src/main.js && node --check src/agent.js && node --check src/tools.js && node --check src/voice.js && node --check src/preload.js && node --check src/ui/renderer.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tomosmira823-wq/jarvis.git"
+  },
+  "author": "Tom",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/tomosmira823-wq/jarvis/issues"
+  },
+  "homepage": "https://github.com/tomosmira823-wq/jarvis#readme",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "electron-log": "^5.4.4",
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3"
+  },
+  "productName": "Jarvis",
+  "build": {
+    "appId": "uk.kivo.jarvis",
+    "productName": "Jarvis",
+    "copyright": "Tom",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "Jarvis-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Jarvis",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "tomosmira823-wq",
+        "repo": "jarvis",
+        "releaseType": "release"
+      }
+    ]
+  }
+}
