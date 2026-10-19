@@ -1,10 +1,13 @@
 name: Build & release
 
-# Push a tag like v1.0.1 and this builds the Windows installer and publishes
-# it as a GitHub Release. Installed copies of Jarvis pick it up automatically.
+# Any push to main that changes package.json (i.e. a version bump) builds the
+# Windows installer and publishes it as GitHub Release v<version>. Installed
+# copies of Jarvis pick it up automatically. A version that's already released
+# is skipped by electron-builder, so re-runs are harmless.
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths: ['package.json', '.github/workflows/release.yml']
   workflow_dispatch:
 
 permissions:

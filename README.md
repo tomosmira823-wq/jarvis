@@ -29,11 +29,11 @@ On first launch, Settings opens. Paste your Anthropic API key (from console.anth
 
 ## Releasing an update
 
-Bump the version and push a tag; GitHub Actions builds the installer and publishes the release. Every installed copy downloads it in the background and installs it on next restart (or straight away from the "Restart now" banner).
+Bump the version in `package.json` and push to `main`. GitHub Actions builds the installer and publishes the release; every installed copy downloads it in the background and installs it on next restart (or straight away from the "Restart now" banner).
 
 ```
-npm version patch      # 1.0.0 -> 1.0.1, commits and tags
-git push --follow-tags
+npm version patch --no-git-tag-version   # 1.0.0 -> 1.0.1
+git commit -am "v1.0.1" && git push
 ```
 
 ## Developing
